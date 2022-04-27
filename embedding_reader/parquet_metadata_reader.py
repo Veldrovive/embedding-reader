@@ -15,12 +15,11 @@ import math
 class ParquetMetadataReader:
     """Parquet reader class, implements init to read the files headers and call to produce embeddings batches"""
 
-    def __init__(self, embeddings_folder, embedding_column_name, metadata_column_names=None):
+    def __init__(self, embeddings_folder, embedding_column_names):
         self.embeddings_folder = embeddings_folder
         self.fs, embeddings_file_paths = get_file_list(embeddings_folder, "parquet")
 
-        self.metadata_column_names = metadata_column_names
-        self.embedding_column_name = embedding_column_name
+        self.embedding_column_names = [embedding_column_names] if isinstance(embedding_column_names, str) else embedding_column_names
 
         def file_to_header(filename):
             try:
@@ -80,12 +79,15 @@ class ParquetMetadataReader:
                 with self.fs.open(path, "rb") as f:
                     length = end - start
                     table = pq.read_table(f, use_threads=False)
-                    id_columns = self.metadata_column_names
                     table_slice = table.slice(start, length)
-                    embeddings_raw = table_slice[self.embedding_column_name].to_pylist()
-                    ids = table_slice.select(id_columns).to_pandas() if id_columns else None
 
-                    return (None, (embeddings_raw, ids, piece,))
+                    embeddings_raw = []
+                    for embedding_column_name in self.embedding_column_names:
+                        embeddings_raw.append(
+                            table_slice[embedding_column_name].to_pylist()
+                        )
+
+                    return (None, (embeddings_raw, None, piece,))
             except Exception as e:  # pylint: disable=broad-except
                 return e, (None, None, piece)
 
@@ -105,7 +107,7 @@ class ParquetMetadataReader:
         if show_progress:
             pbar = tqdm(total=len(pieces))
         with ThreadPool(parallel_pieces) as p:
-            for err, (data, meta, piece) in p.imap(read_piece, piece_generator(pieces)):
+            for err, (data, _, piece) in p.imap(read_piece, piece_generator(pieces)):
                 if err is not None:
                     stopped = True
                     semaphore.release()
@@ -114,25 +116,15 @@ class ParquetMetadataReader:
                     ) from err
                 try:
                     if batch is None:
-                        batch = []
-                        if self.metadata_column_names is not None:
-                            batch_meta = np.empty((piece.batch_length, len(self.metadata_column_names)), dtype="object")
-                    batch.extend(data)
-                    if self.metadata_column_names is not None:
-                        batch_meta[batch_offset : (batch_offset + piece.piece_length)] = meta.to_numpy()
+                        batch = list(([] for _ in range(len(data))))
+                    for i, column_data in enumerate(data):
+                        batch[i].extend(column_data)
                     if piece.last_piece:
-                        if self.metadata_column_names is not None:
-                            meta_batch_df = pd.DataFrame(batch_meta, columns=self.metadata_column_names).infer_objects()
-                            meta_batch_df["i"] = np.arange(start=piece.batch_start, stop=piece.batch_end)
-                        else:
-                            meta_batch_df = pd.DataFrame(
-                                np.arange(start=piece.batch_start, stop=piece.batch_end), columns=["i"]
-                            )
+                        meta_batch_df = pd.DataFrame(
+                            np.arange(start=piece.batch_start, stop=piece.batch_end), columns=["i"]
+                        )
                         yield batch, meta_batch_df
                         batch = None
-                        if self.metadata_column_names is not None:
-                            batch_meta = None
-                        batch_offset = 0
 
                     if show_progress:
                         pbar.update(1)

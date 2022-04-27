@@ -1,3 +1,3 @@
 """embedding_reader"""
 
-from embedding_reader.embedding_reader import EmbeddingReader
+from embedding_reader.embedding_reader import EmbeddingReader, CombinedEmbeddingReader

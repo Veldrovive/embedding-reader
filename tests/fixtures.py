@@ -81,27 +81,30 @@ def build_test_collection_parquet_metadata(
     tmp_path = tmpdir.mkdir(tmpdir_name)
     sizes = [random.randint(min_size, max_size) for _ in range(nb_files)]
     all_dfs = []
-    expected_array = []
+    expected_arrays = [[], []]
     n = 0
     for i, size in enumerate(sizes):
         if kind == "random":
             arr = list(np.random.rand(size).astype("str"))
+            arr2 = list(np.random.rand(size).astype("str"))
         elif kind == "simple":
             arr = list((i * np.ones((size))).astype("str"))
+            arr2 = list((i * np.zeros((size))).astype("str"))
         if consecutive_ids:
             # ids would be consecutive from 0 to N-1
             ids = list(range(n, n + size))
         else:
             ids = np.random.randint(max_size * nb_files * 10, size=size)
         id2 = np.random.randint(max_size * nb_files * 10, size=size)
-        df = pd.DataFrame({"metadata": list(arr), "id": ids, "id2": id2})
+        df = pd.DataFrame({"metadata": list(arr), "metadata2": list(arr2), "id": ids, "id2": id2})
         all_dfs.append(df)
-        expected_array.extend(arr)
+        expected_arrays[0].extend(arr)
+        expected_arrays[1].extend(arr2)
         filename = str(i).zfill(int(math.log10(len(str(nb_files)))) + 1)
         file_path = os.path.join(tmp_path, f"{filename}.parquet")
         df.to_parquet(file_path)
         n += len(df)
-    return str(tmp_path), sizes, expected_array
+    return str(tmp_path), sizes, expected_arrays
 
 def build_test_collection_parquet_npy(
     tmpdir: py.path,
