@@ -3,6 +3,7 @@
 from embedding_reader.numpy_reader import NumpyReader
 from embedding_reader.parquet_reader import ParquetReader
 from embedding_reader.parquet_numpy_reader import ParquetNumpyReader
+from embedding_reader.parquet_metadata_reader import ParquetMetadataReader
 
 
 class EmbeddingReader:
@@ -24,6 +25,8 @@ class EmbeddingReader:
             )
         elif file_format == "parquet_npy":
             self.reader = ParquetNumpyReader(embeddings_folder, metadata_folder, meta_columns)
+        elif file_format == "parquet_metadata":
+            self.reader = ParquetMetadataReader(embeddings_folder, embedding_column, meta_columns)
         else:
             raise ValueError("format must be npy, parquet or parquet_npy")
 
